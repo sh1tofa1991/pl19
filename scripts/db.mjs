@@ -14,7 +14,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import "dotenv/config";
+import pgpkg from "pg";
 import EmbeddedPostgres from "embedded-postgres";
+
+const { Client } = pgpkg;
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const dataDir = path.join(root, ".pgdata");
@@ -22,6 +25,10 @@ const PORT = 5433;
 const USER = "postgres";
 const PASSWORD = "postgres";
 const DB_NAME = "app_db";
+// Явная кодировка обязательна: без неё initdb на Windows берёт кодировку из
+// локали системы (например WIN1251 для русской) и вставка имён вроде
+// «DISFARÇADOS» падает. locale=C разрешает любую кодировку на любой платформе.
+const INITDB_FLAGS = ["--locale=C", "--encoding=UTF8"];
 
 const cmd = process.argv.slice(2).join(" ");
 if (!cmd) {
@@ -32,23 +39,63 @@ if (!cmd) {
 let pg = null;
 let url = process.env.DATABASE_URL;
 
-async function startEmbedded() {
-  pg = new EmbeddedPostgres({
+function makePg() {
+  return new EmbeddedPostgres({
     databaseDir: dataDir,
     user: USER,
     password: PASSWORD,
     port: PORT,
     persistent: true,
     autoRehydrateSymlinks: true,
+    initdbFlags: INITDB_FLAGS,
     onLog: () => {},
     onError: () => {},
   });
-  const fresh = !fs.existsSync(path.join(dataDir, "PG_VERSION"));
-  if (fresh) {
-    console.log("[db] создаю локальный Postgres в .pgdata…");
+}
+
+/** Кодировки баз postgres/app_db — должны быть UTF8. */
+async function badEncodings() {
+  const c = new Client({ connectionString: `postgresql://${USER}:${PASSWORD}@127.0.0.1:${PORT}/postgres` });
+  await c.connect();
+  try {
+    const r = await c.query("select datname, pg_encoding_to_char(encoding) as enc from pg_database where datname in ('postgres', $1)", [
+      DB_NAME,
+    ]);
+    return r.rows.filter((row) => row.enc !== "UTF8");
+  } finally {
+    await c.end();
+  }
+}
+
+async function startEmbedded() {
+  pg = makePg();
+  if (!fs.existsSync(path.join(dataDir, "PG_VERSION"))) {
+    console.log("[db] создаю локальный Postgres в .pgdata (UTF8)…");
     await pg.initialise();
   }
   await pg.start();
+
+  // Кластер мог быть создан в не-UTF8 кодировке (старые версии скрипта на
+  // Windows с русской локалью). Данные в .pgdata — пересинхронизируемый кэш,
+  // поэтому смело пересоздаём кластер с UTF8.
+  try {
+    const bad = await badEncodings();
+    if (bad.length) {
+      console.warn(
+        `[db] кодировка базы — ${bad.map((r) => `${r.datname}: ${r.enc}`).join(", ")}, а нужна UTF8 (иначе ломаются имена вроде «DISFARÇADOS»).`,
+      );
+      console.warn("[db] пересоздаю .pgdata с UTF8 — данные синхронизируются заново…");
+      await pg.stop();
+      pg = null;
+      fs.rmSync(dataDir, { recursive: true, force: true });
+      pg = makePg();
+      await pg.initialise();
+      await pg.start();
+    }
+  } catch (e) {
+    console.warn("[db] не удалось проверить кодировку базы:", e?.message ?? e);
+  }
+
   try {
     await pg.createDatabase(DB_NAME);
   } catch {

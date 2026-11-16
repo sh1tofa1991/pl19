@@ -1,6 +1,7 @@
 import { and, asc, desc, eq, inArray, lt, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { markets, matches, syncState, trades, walletStats } from "@/db/schema";
+import { errText } from "@/lib/api";
 import { analyze, type TradeRow } from "@/lib/analytics";
 
 const GAMMA = "https://gamma-api.polymarket.com";
@@ -39,7 +40,7 @@ async function pmap<T>(items: T[], limit: number, fn: (x: T) => Promise<void>) {
       try {
         await fn(item);
       } catch (e) {
-        state.lastError = String((e as Error).message ?? e);
+        state.lastError = errText(e);
       }
     }
   });
@@ -535,7 +536,7 @@ async function runSync() {
     state.failures = 0;
     state.lastError = "";
   } catch (e) {
-    state.lastError = String((e as Error).message ?? e);
+    state.lastError = errText(e);
     state.lastErrorAt = Date.now();
     state.failures++;
   } finally {
