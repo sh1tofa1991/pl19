@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { guard } from "@/lib/api";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { markets, matches, trades, walletStats } from "@/db/schema";
+import { computeClusters } from "@/lib/clusters";
 import { kickSync, syncInfo } from "@/lib/sync";
 
 export const dynamic = "force-dynamic";
@@ -98,10 +99,27 @@ async function handler() {
     .sort((a, b) => b.profit - a.profit)
     .slice(0, 10);
 
+  // совместные ставки по матчам — для кластеров кошельков
+  const coRows = await db
+    .select({
+      matchSlug: trades.matchSlug,
+      wallet: trades.wallet,
+      outcomeIdx: trades.outcomeIdx,
+      usd: sql<number>`sum(${trades.usd})::float`,
+    })
+    .from(trades)
+    .innerJoin(markets, and(eq(markets.conditionId, trades.conditionId), eq(markets.kind, "match")))
+    .where(eq(trades.side, "BUY"))
+    .groupBy(trades.matchSlug, trades.wallet, trades.outcomeIdx);
+
   return NextResponse.json({
     items: list,
     top10,
     bettingNow,
+    clusters: computeClusters(
+      coRows.map((r) => ({ matchSlug: r.matchSlug, wallet: r.wallet, outcomeIdx: r.outcomeIdx, usd: Number(r.usd) })),
+      all.map((w) => ({ address: w.address, name: w.name, matches: w.matches, wins: w.wins, staked: w.staked, profit: w.profit, tag: w.tag })),
+    ),
     kpi: {
       total: list.length,
       strong: list.filter((w) => w.tag === "strong").length,

@@ -33,6 +33,13 @@ type ListResp = {
     game: string;
     wallets: { address: string; name: string; tag: string; team: string; usd: number; winRate: number; matches: number }[];
   }[];
+  clusters: {
+    members: { address: string; name: string; matches: number; wins: number; staked: number; profit: number; winRate: number; tag: string }[];
+    together: number;
+    sameSide: number;
+    sameSideRate: number;
+    combined: { matches: number; wins: number; staked: number; profit: number; winRate: number; roi: number };
+  }[];
   kpi: { total: number; strong: number; suspect: number; active: number; stopped: number; matchesWithElite: number };
   sync: { running: boolean; phase: string };
 };
@@ -249,6 +256,36 @@ export default function WalletsPage() {
           </div>
         ) : (
           <div className="rounded-lg bg-[#0e0e15] px-3 py-2 text-sm text-slate-500">Сильных кошельков с ≥ $200 на одной стороне открытых матчей сейчас нет.</div>
+        )}
+      </Card>
+
+      <Card className="px-4 py-3">
+        <div className="mb-2 flex items-center gap-2 text-sm font-bold text-white">
+          <i className="h-2 w-2 rounded-full bg-violet-500" /> Кластеры кошельков
+          <span className="text-xs font-normal text-slate-500">постоянно ставят на одни матчи одной стороной — возможно, один владелец</span>
+        </div>
+        {data?.clusters.length ? (
+          <div className="space-y-1.5">
+            {data.clusters.slice(0, 8).map((c) => (
+              <div key={c.members[0].address} className="flex flex-wrap items-center gap-2 rounded-lg border border-[#2a2a38] bg-[#14141c] px-3 py-2 text-sm">
+                <span className="flex flex-wrap gap-1.5">
+                  {c.members.map((m) => (
+                    <button key={m.address} onClick={() => setSel(m.address)} title={m.address}>
+                      <Chip tone="blue">{nameOf(m.name, m.address)}</Chip>
+                    </button>
+                  ))}
+                </span>
+                {c.together >= 4 && c.sameSideRate >= 0.8 && <Chip tone="red">вероятно один владелец</Chip>}
+                {c.combined.matches >= 5 && c.combined.winRate >= 0.75 && <Chip tone="amber">высокий винрейт</Chip>}
+                <span className="ml-auto text-xs text-slate-400">
+                  вместе {c.together} матчей · {pct(c.sameSideRate)} на одну сторону · суммарно{" "}
+                  <b className={c.combined.profit >= 0 ? "text-emerald-400" : "text-red-400"}>{money(c.combined.profit)}</b> · винрейт {pct(c.combined.winRate)}
+                </span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="rounded-lg bg-[#0e0e15] px-3 py-2 text-sm text-slate-500">Пока нет кошельков, которые регулярно ставят на одни и те же матчи.</div>
         )}
       </Card>
 
