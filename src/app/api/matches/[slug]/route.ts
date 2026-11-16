@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { guard } from "@/lib/api";
 import { and, eq, gt, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { markets, matches, trades } from "@/db/schema";
@@ -43,7 +44,7 @@ async function loadHolders(cond: string, p1: number, names: [string, string]) {
   }
 }
 
-export async function GET(req: Request, ctx: { params: Promise<{ slug: string }> }) {
+async function handler(req: Request, ctx: { params: Promise<{ slug: string }> }) {
   kickSync();
   const { slug } = await ctx.params;
   const [m] = await db.select().from(matches).where(eq(matches.slug, slug));
@@ -122,3 +123,5 @@ export async function GET(req: Request, ctx: { params: Promise<{ slug: string }>
     now: Date.now(),
   });
 }
+
+export const GET = guard(handler);

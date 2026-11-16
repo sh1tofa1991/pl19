@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { Card, GameBadge, Loading, Pills, Stat, useGame, usePoll, usd } from "@/components/ui";
+import { Card, ErrorBanner, GameBadge, Loading, Pills, Stat, useGame, usePoll, usd } from "@/components/ui";
 
 type Item = {
   slug: string;
@@ -45,7 +45,7 @@ function Equity({ pts }: { pts: number[] }) {
 
 export default function ResultsPage() {
   const game = useGame();
-  const { data, loading } = usePoll<{ items: Item[]; sync: { running: boolean } }>("/api/results", 15000);
+  const { data, loading, error } = usePoll<{ items: Item[]; sync: { running: boolean } }>("/api/results", 15000);
   const [bucket, setBucket] = useState<Bucket>("all");
   const [alertsOnly, setAlertsOnly] = useState(false);
   const [floor, setFloor] = useState(true);
@@ -116,6 +116,7 @@ export default function ResultsPage() {
   }, [data, game, bucket, alertsOnly, floor, stake, range]);
 
   if (loading && !data) return <Loading />;
+  if (error && !data) return <ErrorBanner error={error} />;
 
   return (
     <div className="space-y-4">

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { guard } from "@/lib/api";
 import { and, desc, eq, isNotNull } from "drizzle-orm";
 import { db } from "@/db";
 import { matches } from "@/db/schema";
@@ -6,7 +7,7 @@ import { kickSync, syncInfo } from "@/lib/sync";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+async function handler() {
   kickSync();
   const rows = await db
     .select()
@@ -35,3 +36,5 @@ export async function GET() {
     sync: syncInfo(),
   });
 }
+
+export const GET = guard(handler);

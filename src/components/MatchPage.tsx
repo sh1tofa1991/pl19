@@ -6,6 +6,7 @@ import SignalCard from "@/components/SignalCard";
 import {
   COLORS,
   Card,
+  ErrorBanner,
   GameBadge,
   Loading,
   ScoreRing,
@@ -319,12 +320,13 @@ export default function MatchPage({ slug }: { slug: string }) {
   const now = useNow(1000);
 
   if (loading && !data) return <Loading />;
-  if (!data || error === "404")
+  if (error === "404")
     return (
       <Card className="p-10 text-center text-slate-400">
         Матч не найден. <Link href="/" className="text-sky-400 underline">К списку</Link>
       </Card>
     );
+  if (!data) return <ErrorBanner error={error} />;
   const m = data.match;
   const names: [string, string] = [m.team1, m.team2];
   const finished = m.status === "finished";

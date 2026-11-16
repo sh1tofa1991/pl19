@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { Card, Chip, Loading, Pills, Stat, Tabs, agoSec, nameOf, pct, useGame, usePoll, usd } from "@/components/ui";
+import { Card, Chip, ErrorBanner, Loading, Pills, Stat, Tabs, agoSec, nameOf, pct, useGame, usePoll, usd } from "@/components/ui";
 
 type W = {
   address: string;
@@ -110,12 +110,13 @@ function Network({ d }: { d: Detail }) {
 }
 
 function DetailPanel({ address }: { address: string }) {
-  const { data, loading } = usePoll<Detail>(`/api/wallets/${address}`, 30000);
+  const { data, loading, error } = usePoll<Detail>(`/api/wallets/${address}`, 30000);
   const [tab, setTab] = useState<"hist" | "net">("hist");
   const [page, setPage] = useState(0);
   useEffect(() => setPage(0), [address]);
   if (loading && !data) return <Loading text="Загрузка кошелька…" />;
-  if (!data) return <div className="p-6 text-sm text-slate-500">Кошелёк не найден.</div>;
+  if (error === "404") return <div className="p-6 text-sm text-slate-500">Кошелёк не найден.</div>;
+  if (!data) return <ErrorBanner error={error} />;
   const w = data.wallet;
   const wr = w.matches ? w.wins / w.matches : 0;
   const slice = data.history.slice(page * 10, page * 10 + 10);
@@ -182,7 +183,7 @@ function DetailPanel({ address }: { address: string }) {
 
 export default function WalletsPage() {
   const game = useGame();
-  const { data, loading } = usePoll<ListResp>("/api/wallets", 20000);
+  const { data, loading, error } = usePoll<ListResp>("/api/wallets", 20000);
   const [filter, setFilter] = useState<Filter>("all");
   const [sort, setSort] = useState<Sort>("profit");
   const [q, setQ] = useState("");
@@ -212,6 +213,7 @@ export default function WalletsPage() {
   const selected = sel ?? list[0]?.address ?? null;
 
   if (loading && !data) return <Loading />;
+  if (error && !data) return <ErrorBanner error={error} />;
   const k = data?.kpi;
   const rows = list.slice(page * PAGE, page * PAGE + PAGE);
   const pages = Math.ceil(list.length / PAGE);

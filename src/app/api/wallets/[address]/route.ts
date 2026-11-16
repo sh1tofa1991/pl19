@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { guard } from "@/lib/api";
 import { eq, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { walletStats } from "@/db/schema";
@@ -8,7 +9,7 @@ export const dynamic = "force-dynamic";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-export async function GET(_req: Request, ctx: { params: Promise<{ address: string }> }) {
+async function handler(_req: Request, ctx: { params: Promise<{ address: string }> }) {
   const { address: raw } = await ctx.params;
   const address = raw.toLowerCase();
   const [w] = await db.select().from(walletStats).where(eq(walletStats.address, address));
@@ -123,3 +124,5 @@ export async function GET(_req: Request, ctx: { params: Promise<{ address: strin
     network,
   });
 }
+
+export const GET = guard(handler);

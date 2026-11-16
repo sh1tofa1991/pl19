@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import SignalCard from "@/components/SignalCard";
-import { Card, GameBadge, Loading, Pills, ScoreRing, SplitBar, Stat, agoSec, pct, startLabel, useGame, useNow, usePoll, usd } from "@/components/ui";
+import { Card, ErrorBanner, GameBadge, Loading, Pills, ScoreRing, SplitBar, Stat, agoSec, pct, startLabel, useGame, useNow, usePoll, usd } from "@/components/ui";
 import type { ListItem, MatchesResponse } from "@/lib/types";
 
 function MatchCard({ m, now }: { m: ListItem; now: number }) {
@@ -81,7 +81,7 @@ function MatchCard({ m, now }: { m: ListItem; now: number }) {
 
 export default function LivePage() {
   const game = useGame();
-  const { data, loading } = usePoll<MatchesResponse>(`/api/matches${game ? `?game=${game}` : ""}`, 5000);
+  const { data, loading, error } = usePoll<MatchesResponse>(`/api/matches${game ? `?game=${game}` : ""}`, 5000);
   const now = useNow(1000);
   const [status, setStatus] = useState<"all" | "live" | "upcoming">("all");
   const [minScore, setMinScore] = useState<"0" | "30" | "60">("0");
@@ -98,6 +98,7 @@ export default function LivePage() {
   }, [data, status, minScore, q]);
 
   if (loading && !data) return <Loading />;
+  if (error && !data) return <ErrorBanner error={error} />;
   const k = data?.kpi;
   const syncing = data?.sync.running;
 
@@ -113,8 +114,19 @@ export default function LivePage() {
           tone="green"
         />
         <Stat label="Матчи с потоком" value={k?.withFlow ?? 0} sub={`из ${k?.total ?? 0} отслеживаемых · ${k?.live ?? 0} live`} />
-        <Stat label="Источник" value="Polymarket" sub={syncing ? `синхронизация: ${data?.sync.phase}…` : "CLOB · Gamma · Data API"} />
+        <Stat
+          label="Источник"
+          value="Polymarket"
+          tone={data?.sync.lastError ? "amber" : undefined}
+          sub={syncing ? `синхронизация: ${data?.sync.phase}…` : data?.sync.lastError ? "ошибка синхронизации — детали ниже" : "CLOB · Gamma · Data API"}
+        />
       </Card>
+
+      {data?.sync.lastError && (
+        <Card className="border-amber-500/30 bg-amber-500/5 px-4 py-3 text-xs text-amber-200">
+          Синхронизация с Polymarket: {data.sync.lastError}
+        </Card>
+      )}
 
       <div className="flex flex-wrap items-center gap-3">
         <Pills
@@ -147,7 +159,9 @@ export default function LivePage() {
         <Card className="p-10 text-center text-sm text-slate-500">
           {syncing && !data?.items.length
             ? "Идёт первичная загрузка матчей и сделок с Polymarket — это займёт около минуты…"
-            : "Нет матчей под выбранные фильтры."}
+            : data?.sync.lastError && !data?.items.length
+              ? "Данные не загрузились: синхронизация с Polymarket не удалась (детали выше)."
+              : "Нет матчей под выбранные фильтры."}
         </Card>
       ) : (
         <div className="grid gap-3 xl:grid-cols-2">

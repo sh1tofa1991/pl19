@@ -14,7 +14,7 @@ async function getJson(url: string, tries = 3): Promise<any> {
     try {
       const res = await fetch(url, {
         headers: { "Accept-Encoding": "gzip", Accept: "application/json" },
-        signal: AbortSignal.timeout(25000),
+        signal: AbortSignal.timeout(15000),
         cache: "no-store",
       });
       if (res.status === 429) {
@@ -52,6 +52,8 @@ type SyncMem = {
   lastLive: number;
   lastBackfill: number;
   lastError: string;
+  lastErrorAt: number;
+  failures: number;
   phase: string;
   startedAt: number;
 };
@@ -62,6 +64,8 @@ g.__pmSync ??= {
   lastLive: 0,
   lastBackfill: 0,
   lastError: "",
+  lastErrorAt: 0,
+  failures: 0,
   phase: "idle",
   startedAt: Date.now(),
 };
@@ -528,8 +532,12 @@ async function runSync() {
       .insert(syncState)
       .values({ key: "last_sync", value: String(Date.now()) })
       .onConflictDoUpdate({ target: syncState.key, set: { value: String(Date.now()) } });
+    state.failures = 0;
+    state.lastError = "";
   } catch (e) {
     state.lastError = String((e as Error).message ?? e);
+    state.lastErrorAt = Date.now();
+    state.failures++;
   } finally {
     state.phase = "idle";
     state.running = false;
@@ -544,6 +552,10 @@ export function kickSync() {
     return;
   }
   const now = Date.now();
+  // экспоненциальный бэкофф после ошибок — не долбим API каждые пару секунд
+  if (state.failures > 0 && now - state.lastErrorAt < Math.min(60_000, 15_000 * 2 ** Math.min(state.failures - 1, 2))) {
+    return;
+  }
   if (state.lastFull === 0 || now - state.lastFull > 120_000 || now - state.lastLive > 6_000) {
     void runSync();
   }

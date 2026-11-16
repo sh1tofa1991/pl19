@@ -8,6 +8,7 @@ export function usePoll<T>(url: string | null, ms = 5000) {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const alive = useRef(true);
+  const fails = useRef(0);
 
   useEffect(() => {
     alive.current = true;
@@ -21,12 +22,20 @@ export function usePoll<T>(url: string | null, ms = 5000) {
         if (!alive.current) return;
         setData(j);
         setError(null);
+        fails.current = 0;
         window.dispatchEvent(new CustomEvent("pm-updated", { detail: Date.now() }));
       } catch (e) {
-        if (alive.current) setError((e as Error).message);
+        if (alive.current) {
+          fails.current += 1;
+          setError((e as Error).message);
+        }
       } finally {
         if (alive.current) setLoading(false);
-        if (alive.current) timer = setTimeout(load, ms);
+        if (alive.current) {
+          // при ошибках опрашиваем реже, чтобы не спамить сервер бесконечными запросами
+          const delay = fails.current ? Math.min(ms * 2 ** Math.min(fails.current, 4), 30_000) : ms;
+          timer = setTimeout(load, delay);
+        }
       }
     };
     setLoading(true);
@@ -220,6 +229,21 @@ export function Loading({ text = "Загрузка данных Polymarket…" }
       <div className="mb-3 h-6 w-6 animate-spin rounded-full border-2 border-slate-600 border-t-red-500" />
       {text}
     </div>
+  );
+}
+
+export function ErrorBanner({ error }: { error: string | null }) {
+  if (!error) return null;
+  const db = error === "503" || error === "database_unavailable";
+  return (
+    <Card className="p-10 text-center">
+      <div className="text-sm font-semibold text-red-300">{db ? "Нет подключения к базе данных" : "Не удаётся загрузить данные"}</div>
+      <div className="mx-auto mt-2 max-w-md text-xs leading-relaxed text-slate-400">
+        {db
+          ? "Запусти Postgres или просто «npm run dev» — он поднимает встроенную базу автоматически (подробнее в README)."
+          : `Ошибка запроса (${error}). Проверь dev-сервер и сеть — опрос продолжится автоматически.`}
+      </div>
+    </Card>
   );
 }
 

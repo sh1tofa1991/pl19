@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { guard } from "@/lib/api";
 import { and, eq, isNotNull } from "drizzle-orm";
 import { db } from "@/db";
 import { matches } from "@/db/schema";
@@ -7,7 +8,7 @@ import { loadOpenMatches, summary } from "@/lib/queries";
 
 export const dynamic = "force-dynamic";
 
-export async function GET(req: Request) {
+async function handler(req: Request) {
   kickSync();
   const game = new URL(req.url).searchParams.get("game");
   const open = await loadOpenMatches(game);
@@ -62,3 +63,5 @@ export async function GET(req: Request) {
     now,
   });
 }
+
+export const GET = guard(handler);

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { guard } from "@/lib/api";
 import { and, eq, inArray } from "drizzle-orm";
 import { db } from "@/db";
 import { markets, matches, trades, walletStats } from "@/db/schema";
@@ -8,7 +9,7 @@ export const dynamic = "force-dynamic";
 
 const ACTIVE_MS = 24 * 3600_000;
 
-export async function GET() {
+async function handler() {
   kickSync();
   const all = await db.select().from(walletStats);
   const now = Date.now();
@@ -112,3 +113,5 @@ export async function GET() {
     sync: syncInfo(),
   });
 }
+
+export const GET = guard(handler);
