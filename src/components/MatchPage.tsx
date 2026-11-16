@@ -54,7 +54,7 @@ type Resp = {
 };
 
 type Tab = "live" | "pre" | "cmp";
-type Sub = "switched" | "wallets" | "holders" | "biggest";
+type Sub = "switched" | "wallets" | "holders" | "biggest" | "onlyexit";
 
 function Dot({ side }: { side: number }) {
   return <i className="inline-block h-2 w-2 rounded-full" style={{ background: side === 0 ? COLORS.a : COLORS.b }} />;
@@ -157,6 +157,7 @@ function SubTabs({ a, names, holders }: { a: Analysis; names: [string, string]; 
           { v: "wallets", label: "Живые кошельки", n: a.liveWallets.length },
           { v: "holders", label: "Держатели", n: h[0].length + h[1].length },
           { v: "biggest", label: "Крупнейшие ставки", n: a.biggest.length },
+          { v: "onlyexit", label: "Только вышли", n: a.onlyExited.length },
         ]}
       />
       <div className="mt-3">
@@ -190,6 +191,14 @@ function SubTabs({ a, names, holders }: { a: Analysis; names: [string, string]; 
           ) : (
             a.liveWallets.slice(0, 10).map((s) => (
               <Row key={s.wallet} n={nameOf(s.name, s.wallet)} w={s.wallet} left={`${names[s.side]} · ${s.trades} сделок`} right={usd(s.usd)} />
+            ))
+          ))}
+        {sub === "onlyexit" &&
+          (a.onlyExited.length === 0 ? (
+            <div className="text-sm text-slate-500">Кошельков, только закрывавших позицию, нет.</div>
+          ) : (
+            a.onlyExited.slice(0, 10).map((s) => (
+              <Row key={s.wallet} n={nameOf(s.name, s.wallet)} w={s.wallet} left="только продажи · выход" right={usd(s.usd)} />
             ))
           ))}
         {sub === "biggest" &&

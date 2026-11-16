@@ -36,6 +36,7 @@ export type Analysis = {
   windows: WindowStat[];
   reasons: Reason[];
   switched: { wallet: string; name: string; from: number; to: number; usd: number }[];
+  onlyExited: { wallet: string; name: string; usd: number }[];
   liveWallets: { wallet: string; name: string; usd: number; side: number; trades: number }[];
   biggest: { wallet: string; name: string; usd: number; side: number; price: number; ts: number }[];
   recent: { wallet: string; name: string; usd: number; side: number; price: number; ts: number; mult: number }[];
@@ -198,6 +199,24 @@ export function analyze(
   switched.sort((a, b) => b.usd - a.usd);
   liveW.sort((a, b) => b.usd - a.usd);
 
+  // ONLY EXITED: только продажи, без покупок ≥$50 — кошелёк закрывал позицию
+  const onlyExited: Analysis["onlyExited"] = [];
+  {
+    const f = new Map<string, { buy: number; sell: number; name: string }>();
+    for (const t of all) {
+      if (t.ts > asOf) continue;
+      const cur = f.get(t.wallet) ?? { buy: 0, sell: 0, name: "" };
+      if (t.side === "BUY") cur.buy += t.usd;
+      else cur.sell += t.usd;
+      if (t.name) cur.name = t.name;
+      f.set(t.wallet, cur);
+    }
+    for (const [w, v] of f) {
+      if (v.sell >= 50 && v.buy < 50) onlyExited.push({ wallet: w, name: v.name, usd: v.sell });
+    }
+    onlyExited.sort((a, b) => b.usd - a.usd);
+  }
+
   const biggest = [...win]
     .sort((a, b) => b.usd - a.usd)
     .slice(0, 6)
@@ -261,6 +280,7 @@ export function analyze(
     windows,
     reasons,
     switched,
+    onlyExited,
     liveWallets: liveW,
     biggest,
     recent,

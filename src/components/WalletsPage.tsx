@@ -33,10 +33,11 @@ type ListResp = {
     title: string;
     status: string;
     game: string;
-    wallets: { address: string; name: string; tag: string; team: string; usd: number; winRate: number; matches: number }[];
+    wallets: { address: string; name: string; tag: string; team: string; usd: number; winRate: number; matches: number; move: string }[];
     groups: { members: string[]; side: number; team: string; usd: number }[];
     fixers: { members: string[]; side: number; team: string; usd: number }[];
   }[];
+  pairs: { a: string; aName: string; b: string; bName: string; together: number; sameRate: number; rel: string; usd: number }[];
   clusters: {
     members: { address: string; name: string; matches: number; wins: number; staked: number; profit: number; winRate: number; tag: string }[];
     together: number;
@@ -262,7 +263,10 @@ export default function WalletsPage() {
                     </Chip>
                   ))}
                   {m.wallets.slice(0, 4).map((w) => (
-                    <Chip key={w.address} tone="amber">★ {nameOf(w.name, w.address)} → {w.team} · {usd(w.usd)}</Chip>
+                    <Chip key={w.address} tone="amber">
+                      ★ {nameOf(w.name, w.address)} → {w.team} · {usd(w.usd)}
+                      {w.move === "flipped" ? " · 🔄 FLIPPED" : w.move === "only-exit" ? " · 🚪 ONLY EXITED" : ""}
+                    </Chip>
                   ))}
                 </span>
               </Link>
@@ -300,6 +304,29 @@ export default function WalletsPage() {
           </div>
         ) : (
           <div className="rounded-lg bg-[#0e0e15] px-3 py-2 text-sm text-slate-500">Пока нет кошельков, которые регулярно ставят на одни и те же матчи.</div>
+        )}
+      </Card>
+
+      <Card className="px-4 py-3">
+        <div className="mb-2 flex items-center gap-2 text-sm font-bold text-white">
+          <i className="h-2 w-2 rounded-full bg-sky-500" /> Пары: same / mixed / against
+          <span className="text-xs font-normal text-slate-500">ставят на одни матчи ≥2 раз · «шанс один владелец» = доля матчей на одну сторону</span>
+        </div>
+        {(data?.pairs ?? []).length ? (
+          <div className="space-y-1.5">
+            {data!.pairs.map((p, i) => (
+              <div key={i} className="flex flex-wrap items-center gap-2 rounded-lg border border-[#2a2a38] bg-[#14141c] px-3 py-2 text-sm">
+                <button onClick={() => setSel(p.a)} className="font-mono text-xs text-cyan-300 hover:text-sky-300" title={p.a}>{nameOf(p.aName, p.a)}</button>
+                <span className="text-xs text-slate-500">↔</span>
+                <button onClick={() => setSel(p.b)} className="font-mono text-xs text-cyan-300 hover:text-sky-300" title={p.b}>{nameOf(p.bName, p.b)}</button>
+                <Chip tone={p.rel === "same" ? "red" : p.rel === "against" ? "blue" : "amber"}>{p.rel}</Chip>
+                {p.rel === "same" && <Chip tone="red">{p.sameRate >= 0.9 ? "🔥 очень высокий шанс один владелец " : "шанс один владелец "}{pct(p.sameRate)}</Chip>}
+                <span className="ml-auto text-xs text-slate-400">{p.together} матчей · объём {usd(p.usd)}</span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="rounded-lg bg-[#0e0e15] px-3 py-2 text-sm text-slate-500">Пар пока нет — нужно ≥2 совместных матчей.</div>
         )}
       </Card>
 

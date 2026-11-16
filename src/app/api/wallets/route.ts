@@ -3,7 +3,8 @@ import { guard } from "@/lib/api";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { markets, matches, trades, walletStats } from "@/db/schema";
-import { computeClusters } from "@/lib/clusters";
+import { computeClusters, computePairs } from "@/lib/clusters";
+import { moveOf } from "@/lib/moves";
 import { kickSync, syncInfo } from "@/lib/sync";
 
 export const dynamic = "force-dynamic";
@@ -57,6 +58,25 @@ async function handler() {
   const clusterOf = new Map<string, number>();
   clusters.forEach((c, i) => c.members.forEach((m) => clusterOf.set(m.address, i)));
 
+  // пары кошельков: same / mixed / against + «шанс один владелец»
+  const pairs = computePairs(
+    coRows.map((r) => ({ matchSlug: r.matchSlug, wallet: r.wallet, outcomeIdx: r.outcomeIdx, usd: Number(r.usd) })),
+  )
+    .slice(0, 25)
+    .map((p) => {
+      const rate = p.together ? p.same / p.together : 0;
+      return {
+        a: p.a,
+        aName: byAddr.get(p.a)?.name ?? "",
+        b: p.b,
+        bName: byAddr.get(p.b)?.name ?? "",
+        together: p.together,
+        sameRate: rate,
+        rel: rate >= 0.8 ? "same" : rate <= 0.2 ? "against" : "mixed",
+        usd: Math.round(p.usd),
+      };
+    });
+
   // elite wallets betting right now on open matches
   const open = await db
     .select()
@@ -67,7 +87,7 @@ async function handler() {
     title: string;
     status: string;
     game: string;
-    wallets: { address: string; name: string; tag: string; side: number; team: string; usd: number; winRate: number; matches: number }[];
+    wallets: { address: string; name: string; tag: string; side: number; team: string; usd: number; winRate: number; matches: number; move: string }[];
     groups: { members: string[]; side: number; team: string; usd: number }[];
     fixers: { members: string[]; side: number; team: string; usd: number }[];
   }[] = [];
@@ -83,6 +103,7 @@ async function handler() {
         ),
       );
     const per = new Map<string, Map<string, [number, number]>>();
+    const mvPer = new Map<string, Map<string, { buy: [number, number]; sell: [number, number] }>>();
     const grpPer = new Map<string, Map<number, [number, number]>>();
     // кошельки-фиксеры: стабильно угадывают сторону в матчах, помеченных «слив»
     const fixerSet = new Set(
@@ -90,6 +111,14 @@ async function handler() {
     );
     const fixPer = new Map<string, { u: [number, number]; names: [string[], string[]] }>();
     for (const { t } of rows) {
+      // ходы кошелька (включая продажи): FLIPPED / ONLY EXITED
+      const mv = mvPer.get(t.matchSlug) ?? new Map<string, { buy: [number, number]; sell: [number, number] }>();
+      const mvw = mv.get(t.wallet) ?? { buy: [0, 0], sell: [0, 0] };
+      const mvi = t.outcomeIdx === 1 ? 1 : 0;
+      if (t.side === "BUY") mvw.buy[mvi] += t.usd;
+      else mvw.sell[mvi] += t.usd;
+      mv.set(t.wallet, mvw);
+      mvPer.set(t.matchSlug, mv);
       if (t.side !== "BUY") continue;
       if (fixerSet.has(t.wallet)) {
         const fm = fixPer.get(t.matchSlug) ?? { u: [0, 0], names: [[], []] as [string[], string[]] };
@@ -129,6 +158,10 @@ async function handler() {
                 usd: u[side],
                 winRate: ws.matches ? ws.wins / ws.matches : 0,
                 matches: ws.matches,
+                move: (() => {
+                  const f = mvPer.get(m.slug)?.get(address);
+                  return f ? moveOf(f.buy, f.sell) : "";
+                })(),
               };
             })
             .filter((w) => w.usd >= 200)
@@ -178,6 +211,7 @@ async function handler() {
     top10,
     bettingNow,
     clusters,
+    pairs,
     kpi: {
       total: list.length,
       strong: list.filter((w) => w.tag === "strong").length,

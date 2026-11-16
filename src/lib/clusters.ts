@@ -40,7 +40,7 @@ export type WalletStatRow = {
   tag: string;
 };
 
-type CoRow = { matchSlug: string; wallet: string; outcomeIdx: number; usd: number };
+export type CoRow = { matchSlug: string; wallet: string; outcomeIdx: number; usd: number };
 
 class UnionFind {
   private parent = new Map<string, string>();
@@ -166,4 +166,51 @@ export function computeClusters(
     });
   }
   return clusters.sort((a, b) => b.combined.profit - a.combined.profit);
+}
+
+export type PairStat = {
+  a: string;
+  b: string;
+  together: number; // матчей, где оба ставили
+  same: number; // из них на одну сторону
+  usd: number; // совокупный объём пары на этих матчах
+};
+
+/**
+ * Пары кошельков (панель same / mixed / against):
+ * все пары, ставившие на одни и те же матчи ≥2 раз, с совместным объёмом.
+ * rel и «шанс один владелец» считаются снаружи из same/together.
+ */
+export function computePairs(rows: CoRow[], opts: { minUsd?: number } = {}): PairStat[] {
+  const minUsd = opts.minUsd ?? 20;
+
+  const perMatch = new Map<string, Map<string, [number, number]>>();
+  for (const r of rows) {
+    const per = perMatch.get(r.matchSlug) ?? new Map<string, [number, number]>();
+    const u = per.get(r.wallet) ?? [0, 0];
+    u[r.outcomeIdx === 0 ? 0 : 1] += r.usd;
+    per.set(r.wallet, u);
+    perMatch.set(r.matchSlug, per);
+  }
+
+  const pairs = new Map<string, PairStat>();
+  for (const per of perMatch.values()) {
+    const ws = [...per.entries()].filter(([, u]) => u[0] + u[1] >= minUsd);
+    for (let i = 0; i < ws.length; i++) {
+      for (let j = i + 1; j < ws.length; j++) {
+        const [wa, ua] = ws[i];
+        const [wb, ub] = ws[j];
+        const [a, b] = wa < wb ? [wa, wb] : [wb, wa];
+        const key = `${a}|${b}`;
+        const p = pairs.get(key) ?? { a, b, together: 0, same: 0, usd: 0 };
+        p.together += 1;
+        const sa = ua[0] >= ua[1] ? 0 : 1;
+        const sb = ub[0] >= ub[1] ? 0 : 1;
+        if (sa === sb) p.same += 1;
+        p.usd += ua[0] + ua[1] + ub[0] + ub[1];
+        pairs.set(key, p);
+      }
+    }
+  }
+  return [...pairs.values()].filter((p) => p.together >= 2).sort((x, y) => y.usd - x.usd);
 }
