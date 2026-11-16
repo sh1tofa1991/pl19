@@ -51,7 +51,6 @@ type SyncMem = {
   running: boolean;
   lastFull: number;
   lastLive: number;
-  lastBackfill: number;
   lastError: string;
   lastErrorAt: number;
   failures: number;
@@ -63,7 +62,6 @@ g.__pmSync ??= {
   running: false,
   lastFull: 0,
   lastLive: 0,
-  lastBackfill: 0,
   lastError: "",
   lastErrorAt: 0,
   failures: 0,
@@ -281,9 +279,14 @@ async function syncMatchTrades(slug: string, opts: { live: boolean; deep: boolea
 
 /* ------------------------------ signal storage ----------------------------- */
 
-export async function finalizeSignal(slug: string) {
+/**
+ * Считает pre-game сигнал по сделкам ДО старта и замораживает его.
+ * История «своя»: сигнал пишется один раз и позже не пересматривается —
+ * в отчёт попадает ровно то, что система думала до матча.
+ */
+export async function freezeSignal(slug: string) {
   const [m] = await db.select().from(matches).where(eq(matches.slug, slug));
-  if (!m || m.status !== "finished" || m.winnerIdx === null) return;
+  if (!m || m.signalScore !== null) return;
   const [ml] = await db
     .select()
     .from(markets)
@@ -293,10 +296,7 @@ export async function finalizeSignal(slug: string) {
     .select()
     .from(trades)
     .where(and(eq(trades.conditionId, ml.conditionId), lt(trades.ts, m.startTime)));
-  if (rows.length < 3) {
-    await db.update(matches).set({ signalScore: null, signalSide: null }).where(eq(matches.slug, slug));
-    return;
-  }
+  if (rows.length < 3) return;
   const tr: TradeRow[] = rows.map((t) => ({
     wallet: t.wallet,
     name: t.name,
@@ -317,9 +317,21 @@ export async function finalizeSignal(slug: string) {
       signalScore: a.score,
       signalSide: a.moneySide,
       signalPrice: Math.min(0.97, Math.max(0.03, sidePrice)),
-      signalWon: a.moneySide === m.winnerIdx,
     })
     .where(eq(matches.slug, slug));
+}
+
+/** Матч завершён: засчитываем результат ранее замороженного сигнала. */
+export async function finalizeSignal(slug: string) {
+  let [m] = await db.select().from(matches).where(eq(matches.slug, slug));
+  if (!m || m.status !== "finished" || m.winnerIdx === null) return;
+  if (m.signalScore === null || m.signalSide === null) {
+    // сигнал не успели заморозить до старта — считаем по тем же данным до старта
+    await freezeSignal(slug);
+    [m] = await db.select().from(matches).where(eq(matches.slug, slug));
+    if (!m || m.signalScore === null || m.signalSide === null) return;
+  }
+  await db.update(matches).set({ signalWon: m.signalSide === m.winnerIdx }).where(eq(matches.slug, slug));
 }
 
 /* ------------------------------- wallet stats ------------------------------ */
@@ -468,42 +480,9 @@ async function syncOpenTrades(onlyLive: boolean) {
   const targets = list.filter((m) => m.status === "live" || m.startTime.getTime() < now + 12 * 3600_000);
   await pmap(targets, 5, async (m) => {
     await syncMatchTrades(m.slug, { live: m.status === "live", deep: !m.tradesSyncedAt });
+    // матч начался — замораживаем pre-game сигнал (история ведётся с нуля)
+    if (m.startTime.getTime() <= Date.now()) await freezeSignal(m.slug);
   });
-}
-
-async function backfillFinished() {
-  state.phase = "history";
-  const picked: string[] = [];
-  for (const sid of Object.values(SERIES)) {
-    const list: any[] = await getJson(
-      `${GAMMA}/events?series_id=${sid}&closed=true&limit=50&order=closedTime&ascending=false`,
-    );
-    let c = 0;
-    for (const e of Array.isArray(list) ? list : []) {
-      if (c >= 40) break;
-      const s = await upsertEvent(e);
-      if (!s) continue;
-      const [m] = await db.select().from(matches).where(eq(matches.slug, s));
-      if (m && m.winnerIdx !== null) {
-        picked.push(s);
-        c++;
-      }
-    }
-  }
-  const todo = await db
-    .select()
-    .from(matches)
-    .where(and(inArray(matches.slug, picked.length ? picked : ["-"])));
-  await pmap(
-    todo.filter((m) => !m.tradesSyncedAt),
-    4,
-    async (m) => {
-      await syncMatchTrades(m.slug, { live: false, deep: true });
-      await finalizeSignal(m.slug);
-    },
-  );
-  const noSig = todo.filter((m) => m.tradesSyncedAt && m.signalScore === null);
-  await pmap(noSig, 4, async (m) => finalizeSignal(m.slug));
 }
 
 async function runSync() {
@@ -519,12 +498,6 @@ async function runSync() {
       state.lastLive = Date.now();
       state.phase = "wallets";
       await recomputeWallets();
-      if (state.lastBackfill === 0 || Date.now() - state.lastBackfill > 20 * 60_000) {
-        await backfillFinished();
-        state.lastBackfill = Date.now();
-        state.phase = "wallets";
-        await recomputeWallets();
-      }
     } else if (now - state.lastLive > 6_000) {
       await syncOpenTrades(true);
       state.lastLive = Date.now();
