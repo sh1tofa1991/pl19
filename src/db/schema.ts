@@ -20,6 +20,7 @@ export const matches = pgTable("matches", {
   startTime: timestamp("start_time", { withTimezone: true }).notNull(),
   status: text("status").notNull().default("upcoming"), // upcoming | live | finished
   winnerIdx: integer("winner_idx"),
+  fixLabel: text("fix_label").notNull().default(""), // fixed | normal | "" (не отмечено)
   scoreText: text("score_text").notNull().default(""),
   closedAt: timestamp("closed_at", { withTimezone: true }),
   volume: real("volume").notNull().default(0),
@@ -87,6 +88,8 @@ export const walletStats = pgTable(
     dota2: integer("dota2").notNull().default(0),
     bigBets: integer("big_bets").notNull().default(0),
     bigWins: integer("big_wins").notNull().default(0),
+    fixMatches: integer("fix_matches").notNull().default(0),
+    fixWins: integer("fix_wins").notNull().default(0),
     openUsd: real("open_usd").notNull().default(0),
     tag: text("tag").notNull().default(""), // strong | suspect | ""
     lastBetAt: timestamp("last_bet_at", { withTimezone: true }),

@@ -23,6 +23,7 @@ async function handler(req: Request) {
       tournament: m.tournament,
       start: m.startTime.getTime(),
       status: m.status,
+      fixLabel: m.fixLabel,
       scoreText: m.scoreText,
       price1: m.price1,
       price2: m.price2,

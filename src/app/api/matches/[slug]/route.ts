@@ -100,6 +100,7 @@ async function handler(req: Request, ctx: { params: Promise<{ slug: string }> })
       tournament: m.tournament,
       start: m.startTime.getTime(),
       status: m.status,
+      fixLabel: m.fixLabel,
       scoreText: m.scoreText,
       winnerIdx: m.winnerIdx,
       price1: m.price1,
@@ -125,3 +126,19 @@ async function handler(req: Request, ctx: { params: Promise<{ slug: string }> })
 }
 
 export const GET = guard(handler);
+
+/** Разметка матча вручную: { fix: "fixed" | "normal" | "" } — «слив» / «норма» / сброс. */
+async function postHandler(req: Request, ctx: { params: Promise<{ slug: string }> }) {
+  const { slug } = await ctx.params;
+  const body = (await req.json().catch(() => ({}))) as { fix?: string };
+  const fix = body.fix === "fixed" || body.fix === "normal" ? body.fix : "";
+  const r = await db
+    .update(matches)
+    .set({ fixLabel: fix, updatedAt: new Date() })
+    .where(eq(matches.slug, slug))
+    .returning({ slug: matches.slug });
+  if (!r.length) return NextResponse.json({ error: "not found" }, { status: 404 });
+  return NextResponse.json({ ok: true, fixLabel: fix });
+}
+
+export const POST = guard(postHandler);

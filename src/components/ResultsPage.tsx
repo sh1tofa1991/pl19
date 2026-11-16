@@ -14,6 +14,7 @@ type Item = {
   bestOf: string;
   start: number;
   scoreText: string;
+  fixLabel: string;
   winnerIdx: number | null;
   signalScore: number | null;
   signalSide: number | null;
@@ -245,6 +246,8 @@ export default function ResultsPage() {
                 <div className="flex flex-wrap items-center gap-2 text-sm font-bold text-white">
                   <GameBadge game={i.game} />
                   {i.title} ({i.bestOf})
+                  {i.fixLabel === "fixed" && <span className="rounded bg-red-500/20 px-1.5 text-[10px] text-red-300">слив</span>}
+                  {i.fixLabel === "normal" && <span className="rounded bg-emerald-500/20 px-1.5 text-[10px] text-emerald-300">норма</span>}
                   {(i.signalScore ?? 0) >= 60 && <span className="rounded bg-amber-500/20 px-1.5 text-[10px] text-amber-300">алерт</span>}
                 </div>
                 <div className="truncate text-xs text-slate-400">

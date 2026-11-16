@@ -17,6 +17,8 @@ type W = {
   dota2: number;
   bigBets: number;
   bigWins: number;
+  fixMatches: number;
+  fixWins: number;
   openUsd: number;
   tag: string;
   lastBetAt: number | null;
@@ -33,6 +35,7 @@ type ListResp = {
     game: string;
     wallets: { address: string; name: string; tag: string; team: string; usd: number; winRate: number; matches: number }[];
     groups: { members: string[]; side: number; team: string; usd: number }[];
+    fixers: { members: string[]; side: number; team: string; usd: number }[];
   }[];
   clusters: {
     members: { address: string; name: string; matches: number; wins: number; staked: number; profit: number; winRate: number; tag: string }[];
@@ -248,6 +251,11 @@ export default function WalletsPage() {
                 <b className="text-white">{m.title}</b>
                 {m.status === "live" && <Chip tone="red">live</Chip>}
                 <span className="ml-auto flex flex-wrap gap-2">
+                  {m.fixers.map((f, fi) => (
+                    <Chip key={fi} tone="red">
+                      🔻 фиксеры → {f.team} · {usd(f.usd)} ({f.members.slice(0, 3).join(", ")})
+                    </Chip>
+                  ))}
                   {m.groups.map((g, gi) => (
                     <Chip key={gi} tone="blue">
                       👥 группа → {g.team} · {usd(g.usd)} ({g.members.slice(0, 3).join(", ")})
@@ -366,7 +374,12 @@ export default function WalletsPage() {
                   </td>
                   <td>
                     <div className="font-semibold text-white">{pct(w.winRate)}</div>
-                    <div className="text-[11px] text-slate-500">{w.wins}/{w.matches}</div>
+                    <div className="text-[11px] text-slate-500">
+                      {w.wins}/{w.matches}
+                      {w.fixMatches > 0 && (
+                        <span className={w.fixWins / w.fixMatches >= 0.75 ? " font-semibold text-red-400" : ""}> · слив {w.fixWins}/{w.fixMatches}</span>
+                      )}
+                    </div>
                   </td>
                   <td>
                     <div className={`font-semibold ${w.profit >= 0 ? "text-emerald-400" : "text-red-400"}`}>{money(w.profit)}</div>

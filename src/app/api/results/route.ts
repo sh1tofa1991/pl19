@@ -26,6 +26,7 @@ async function handler() {
       bestOf: m.bestOf,
       start: m.startTime.getTime(),
       scoreText: m.scoreText,
+      fixLabel: m.fixLabel,
       winnerIdx: m.winnerIdx,
       signalScore: m.signalScore,
       signalSide: m.signalSide,

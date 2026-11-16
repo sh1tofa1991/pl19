@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import SignalCard from "@/components/SignalCard";
-import { Card, ErrorBanner, GameBadge, Loading, Pills, ScoreRing, SplitBar, Stat, agoSec, pct, startLabel, useGame, useNow, usePoll, usd } from "@/components/ui";
+import { Card, Chip, ErrorBanner, GameBadge, Loading, Pills, ScoreRing, SplitBar, Stat, agoSec, pct, startLabel, useGame, useNow, usePoll, usd } from "@/components/ui";
 import type { ListItem, MatchesResponse } from "@/lib/types";
 
 function MatchCard({ m, now }: { m: ListItem; now: number }) {
@@ -18,6 +18,8 @@ function MatchCard({ m, now }: { m: ListItem; now: number }) {
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <GameBadge game={m.game} />
+            {m.fixLabel === "fixed" && <Chip tone="red">слив</Chip>}
+            {m.fixLabel === "normal" && <Chip tone="green">норма</Chip>}
             <Link href={`/match/${m.slug}`} className="truncate text-[15px] font-bold text-white hover:text-sky-300">
               {m.title}
             </Link>

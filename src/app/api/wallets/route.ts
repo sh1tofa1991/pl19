@@ -29,6 +29,8 @@ async function handler() {
       dota2: w.dota2,
       bigBets: w.bigBets,
       bigWins: w.bigWins,
+      fixMatches: w.fixMatches,
+      fixWins: w.fixWins,
       openUsd: w.openUsd,
       tag: w.tag,
       lastBetAt: w.lastBetAt ? w.lastBetAt.getTime() : null,
@@ -67,6 +69,7 @@ async function handler() {
     game: string;
     wallets: { address: string; name: string; tag: string; side: number; team: string; usd: number; winRate: number; matches: number }[];
     groups: { members: string[]; side: number; team: string; usd: number }[];
+    fixers: { members: string[]; side: number; team: string; usd: number }[];
   }[] = [];
   if (open.length) {
     const rows = await db
@@ -81,8 +84,19 @@ async function handler() {
       );
     const per = new Map<string, Map<string, [number, number]>>();
     const grpPer = new Map<string, Map<number, [number, number]>>();
+    // кошельки-фиксеры: стабильно угадывают сторону в матчах, помеченных «слив»
+    const fixerSet = new Set(
+      all.filter((w) => w.fixMatches >= 2 && w.fixWins / Math.max(1, w.fixMatches) >= 0.75).map((w) => w.address),
+    );
+    const fixPer = new Map<string, { u: [number, number]; names: [string[], string[]] }>();
     for (const { t } of rows) {
       if (t.side !== "BUY") continue;
+      if (fixerSet.has(t.wallet)) {
+        const fm = fixPer.get(t.matchSlug) ?? { u: [0, 0], names: [[], []] as [string[], string[]] };
+        fm.u[t.outcomeIdx] += t.usd;
+        fm.names[t.outcomeIdx].push(t.name || `${t.wallet.slice(0, 6)}…${t.wallet.slice(-4)}`);
+        fixPer.set(t.matchSlug, fm);
+      }
       const ci = clusterOf.get(t.wallet);
       if (ci !== undefined) {
         const gm = grpPer.get(t.matchSlug) ?? new Map<number, [number, number]>();
@@ -136,7 +150,21 @@ async function handler() {
             .filter((g) => g.usd >= 300)
             .sort((a, b) => b.usd - a.usd)
         : [];
-      if (wallets.length || groups.length) bettingNow.push({ slug: m.slug, title: m.title, status: m.status, game: m.game, wallets, groups });
+      // ставки кошельков-фиксеров на этот матч
+      const fp = fixPer.get(m.slug);
+      const fixers = fp
+        ? ([0, 1] as const)
+            .map((side) => ({
+              side,
+              team: side === 0 ? m.team1 : m.team2,
+              usd: fp.u[side],
+              members: [...new Set(fp.names[side])],
+            }))
+            .filter((f) => f.usd >= 200)
+            .sort((a, b) => b.usd - a.usd)
+        : [];
+      if (wallets.length || groups.length || fixers.length)
+        bettingNow.push({ slug: m.slug, title: m.title, status: m.status, game: m.game, wallets, groups, fixers });
     }
   }
 

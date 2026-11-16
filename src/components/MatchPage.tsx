@@ -36,6 +36,7 @@ type Resp = {
     tournament: string;
     start: number;
     status: string;
+    fixLabel: string;
     scoreText: string;
     winnerIdx: number | null;
     price1: number | null;
@@ -316,8 +317,22 @@ function CompareTab({ d }: { d: Resp }) {
 export default function MatchPage({ slug }: { slug: string }) {
   const [market, setMarket] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("live");
+  const [fix, setFix] = useState<string | null>(null);
   const { data, loading, error } = usePoll<Resp>(`/api/matches/${slug}${market ? `?market=${market}` : ""}`, 5000);
   const now = useNow(1000);
+
+  const setLabel = async (v: string) => {
+    setFix(v);
+    try {
+      await fetch(`/api/matches/${slug}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fix: v }),
+      });
+    } catch {
+      // опрос сам обновит состояние
+    }
+  };
 
   if (loading && !data) return <Loading />;
   if (error === "404")
@@ -328,6 +343,7 @@ export default function MatchPage({ slug }: { slug: string }) {
     );
   if (!data) return <ErrorBanner error={error} />;
   const m = data.match;
+  const fixVal = fix ?? m.fixLabel ?? "";
   const names: [string, string] = [m.team1, m.team2];
   const finished = m.status === "finished";
   const main = m.status === "live" ? data.live : data.pre;
@@ -348,6 +364,24 @@ export default function MatchPage({ slug }: { slug: string }) {
           </div>
           <div className="text-xs text-slate-500">
             {m.tournament} · старт {st.abs} · объём {usd(m.volume)} {m.scoreText && m.status !== "upcoming" ? `· серия ${m.scoreText}` : ""}
+          </div>
+          <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">метка</span>
+            <button
+              onClick={() => setLabel("fixed")}
+              className={`rounded border px-2 py-0.5 text-[11px] font-semibold transition ${fixVal === "fixed" ? "border-red-500 bg-red-500/20 text-red-300" : "border-[#2a2a38] text-slate-400 hover:border-red-500/60"}`}
+            >
+              слив
+            </button>
+            <button
+              onClick={() => setLabel("normal")}
+              className={`rounded border px-2 py-0.5 text-[11px] font-semibold transition ${fixVal === "normal" ? "border-emerald-500 bg-emerald-500/20 text-emerald-300" : "border-[#2a2a38] text-slate-400 hover:border-emerald-500/60"}`}
+            >
+              норма
+            </button>
+            <button onClick={() => setLabel("")} className="rounded border border-[#2a2a38] px-2 py-0.5 text-[11px] text-slate-500 hover:border-slate-500">
+              сброс
+            </button>
           </div>
         </div>
         <div className={`rounded-lg border px-4 py-2 text-right ${m.status === "live" ? "border-red-500/50 bg-red-500/10" : "border-[#2a2a38] bg-[#14141c]"}`}>

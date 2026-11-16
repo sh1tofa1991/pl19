@@ -355,6 +355,7 @@ export async function recomputeWallets() {
       status: matches.status,
       game: matches.game,
       mw: matches.winnerIdx,
+      fix: matches.fixLabel,
     })
     .from(markets)
     .innerJoin(matches, eq(matches.slug, markets.matchSlug))
@@ -379,7 +380,7 @@ export async function recomputeWallets() {
 
   const out: (typeof walletStats.$inferInsert)[] = [];
   for (const [addr, w] of per) {
-    let n = 0, wins = 0, staked = 0, profit = 0, cs2 = 0, dota = 0, big = 0, bigW = 0, open = 0;
+    let n = 0, wins = 0, staked = 0, profit = 0, cs2 = 0, dota = 0, big = 0, bigW = 0, open = 0, fx = 0, fxW = 0;
     for (const [cond, p] of w.conds) {
       const m = mmap.get(cond);
       if (!m) continue;
@@ -398,6 +399,11 @@ export async function recomputeWallets() {
         if (buy >= 200) {
           big++;
           if (pr > 0) bigW++;
+        }
+        // статистика по матчам, помеченным «слив»: кто угадывал их сторону
+        if (m.fix === "fixed") {
+          fx++;
+          if ((p.buy[0] >= p.buy[1] ? 0 : 1) === m.mw) fxW++;
         }
       } else if (m.status !== "finished") {
         const p1 = m.p1 ?? 0.5;
@@ -418,6 +424,8 @@ export async function recomputeWallets() {
       dota2: dota,
       bigBets: big,
       bigWins: bigW,
+      fixMatches: fx,
+      fixWins: fxW,
       openUsd: open,
       tag,
       lastBetAt: new Date(w.last),

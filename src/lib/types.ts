@@ -10,6 +10,7 @@ export type ListItem = {
   tournament: string;
   start: number;
   status: string;
+  fixLabel: string;
   scoreText: string;
   price1: number | null;
   price2: number | null;
