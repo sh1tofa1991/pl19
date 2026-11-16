@@ -36,6 +36,25 @@ async function handler() {
     }));
   const byAddr = new Map(all.map((w) => [w.address, w]));
 
+  // совместные ставки по матчам — кластеры кошельков («один человек, несколько аккаунтов»)
+  const coRows = await db
+    .select({
+      matchSlug: trades.matchSlug,
+      wallet: trades.wallet,
+      outcomeIdx: trades.outcomeIdx,
+      usd: sql<number>`sum(${trades.usd})::float`,
+    })
+    .from(trades)
+    .innerJoin(markets, and(eq(markets.conditionId, trades.conditionId), eq(markets.kind, "match")))
+    .where(eq(trades.side, "BUY"))
+    .groupBy(trades.matchSlug, trades.wallet, trades.outcomeIdx);
+  const clusters = computeClusters(
+    coRows.map((r) => ({ matchSlug: r.matchSlug, wallet: r.wallet, outcomeIdx: r.outcomeIdx, usd: Number(r.usd) })),
+    all.map((w) => ({ address: w.address, name: w.name, matches: w.matches, wins: w.wins, staked: w.staked, profit: w.profit, tag: w.tag })),
+  );
+  const clusterOf = new Map<string, number>();
+  clusters.forEach((c, i) => c.members.forEach((m) => clusterOf.set(m.address, i)));
+
   // elite wallets betting right now on open matches
   const open = await db
     .select()
@@ -47,6 +66,7 @@ async function handler() {
     status: string;
     game: string;
     wallets: { address: string; name: string; tag: string; side: number; team: string; usd: number; winRate: number; matches: number }[];
+    groups: { members: string[]; side: number; team: string; usd: number }[];
   }[] = [];
   if (open.length) {
     const rows = await db
@@ -60,8 +80,17 @@ async function handler() {
         ),
       );
     const per = new Map<string, Map<string, [number, number]>>();
+    const grpPer = new Map<string, Map<number, [number, number]>>();
     for (const { t } of rows) {
       if (t.side !== "BUY") continue;
+      const ci = clusterOf.get(t.wallet);
+      if (ci !== undefined) {
+        const gm = grpPer.get(t.matchSlug) ?? new Map<number, [number, number]>();
+        const gu = gm.get(ci) ?? [0, 0];
+        gu[t.outcomeIdx] += t.usd;
+        gm.set(ci, gu);
+        grpPer.set(t.matchSlug, gm);
+      }
       const ws = byAddr.get(t.wallet);
       if (!ws || !(ws.tag || (ws.matches >= 4 && ws.wins / ws.matches >= 0.75 && ws.profit > 0))) continue;
       const mm = per.get(t.matchSlug) ?? new Map<string, [number, number]>();
@@ -72,25 +101,42 @@ async function handler() {
     }
     for (const m of open) {
       const mm = per.get(m.slug);
-      if (!mm) continue;
-      const wallets = [...mm.entries()]
-        .map(([address, u]) => {
-          const side = u[0] >= u[1] ? 0 : 1;
-          const ws = byAddr.get(address)!;
-          return {
-            address,
-            name: ws.name,
-            tag: ws.tag,
-            side,
-            team: side === 0 ? m.team1 : m.team2,
-            usd: u[side],
-            winRate: ws.matches ? ws.wins / ws.matches : 0,
-            matches: ws.matches,
-          };
-        })
-        .filter((w) => w.usd >= 200)
-        .sort((a, b) => b.usd - a.usd);
-      if (wallets.length) bettingNow.push({ slug: m.slug, title: m.title, status: m.status, game: m.game, wallets });
+      const wallets = mm
+        ? [...mm.entries()]
+            .map(([address, u]) => {
+              const side = u[0] >= u[1] ? 0 : 1;
+              const ws = byAddr.get(address)!;
+              return {
+                address,
+                name: ws.name,
+                tag: ws.tag,
+                side,
+                team: side === 0 ? m.team1 : m.team2,
+                usd: u[side],
+                winRate: ws.matches ? ws.wins / ws.matches : 0,
+                matches: ws.matches,
+              };
+            })
+            .filter((w) => w.usd >= 200)
+            .sort((a, b) => b.usd - a.usd)
+        : [];
+      // групповые ставки кластеров: сколько группа кладёт на одну сторону сейчас
+      const gm = grpPer.get(m.slug);
+      const groups = gm
+        ? [...gm.entries()]
+            .map(([ci, u]) => {
+              const side = u[0] >= u[1] ? 0 : 1;
+              return {
+                members: clusters[ci].members.map((x) => x.name || `${x.address.slice(0, 6)}…${x.address.slice(-4)}`),
+                side,
+                team: side === 0 ? m.team1 : m.team2,
+                usd: u[side],
+              };
+            })
+            .filter((g) => g.usd >= 300)
+            .sort((a, b) => b.usd - a.usd)
+        : [];
+      if (wallets.length || groups.length) bettingNow.push({ slug: m.slug, title: m.title, status: m.status, game: m.game, wallets, groups });
     }
   }
 
@@ -99,27 +145,11 @@ async function handler() {
     .sort((a, b) => b.profit - a.profit)
     .slice(0, 10);
 
-  // совместные ставки по матчам — для кластеров кошельков
-  const coRows = await db
-    .select({
-      matchSlug: trades.matchSlug,
-      wallet: trades.wallet,
-      outcomeIdx: trades.outcomeIdx,
-      usd: sql<number>`sum(${trades.usd})::float`,
-    })
-    .from(trades)
-    .innerJoin(markets, and(eq(markets.conditionId, trades.conditionId), eq(markets.kind, "match")))
-    .where(eq(trades.side, "BUY"))
-    .groupBy(trades.matchSlug, trades.wallet, trades.outcomeIdx);
-
   return NextResponse.json({
     items: list,
     top10,
     bettingNow,
-    clusters: computeClusters(
-      coRows.map((r) => ({ matchSlug: r.matchSlug, wallet: r.wallet, outcomeIdx: r.outcomeIdx, usd: Number(r.usd) })),
-      all.map((w) => ({ address: w.address, name: w.name, matches: w.matches, wins: w.wins, staked: w.staked, profit: w.profit, tag: w.tag })),
-    ),
+    clusters,
     kpi: {
       total: list.length,
       strong: list.filter((w) => w.tag === "strong").length,

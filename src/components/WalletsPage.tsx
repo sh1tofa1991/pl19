@@ -32,6 +32,7 @@ type ListResp = {
     status: string;
     game: string;
     wallets: { address: string; name: string; tag: string; team: string; usd: number; winRate: number; matches: number }[];
+    groups: { members: string[]; side: number; team: string; usd: number }[];
   }[];
   clusters: {
     members: { address: string; name: string; matches: number; wins: number; staked: number; profit: number; winRate: number; tag: string }[];
@@ -247,6 +248,11 @@ export default function WalletsPage() {
                 <b className="text-white">{m.title}</b>
                 {m.status === "live" && <Chip tone="red">live</Chip>}
                 <span className="ml-auto flex flex-wrap gap-2">
+                  {m.groups.map((g, gi) => (
+                    <Chip key={gi} tone="blue">
+                      👥 группа → {g.team} · {usd(g.usd)} ({g.members.slice(0, 3).join(", ")})
+                    </Chip>
+                  ))}
                   {m.wallets.slice(0, 4).map((w) => (
                     <Chip key={w.address} tone="amber">★ {nameOf(w.name, w.address)} → {w.team} · {usd(w.usd)}</Chip>
                   ))}
